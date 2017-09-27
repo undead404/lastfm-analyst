@@ -95,7 +95,7 @@ def get_user_toptags(lastfm_username):
                     tag_name = get_tag_name(tag)
                     toptags[tag_name] = toptags.get(
                         tag_name, 0) + get_tag_count(tag) * topartists[artist]
-            except:
+            except Exception:
                 print("Artist {artist} make us sick.".format(artist=artist))
         # data = toptags
         data = {key: toptags[key]
