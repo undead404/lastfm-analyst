@@ -1,7 +1,7 @@
 import json
 import math
 import os
-# from pprint import pprint
+from pprint import pprint
 import sys
 import urllib
 from decouple import config
@@ -10,6 +10,7 @@ import requests
 API_KEY = config("API_KEY")
 ARTISTS_LIMIT = 100
 CACHE_DIR = ".cache"
+FRIENDS_BASE_URL = "http://ws.audioscrobbler.com/2.0/?method=user.getfriends&user={lastfm_username}&api_key={api_key}&format=json&recenttracks=0&page={page}"
 LASTFM_USERNAME = config("LASTFM_USERNAME")
 TAG_THRESHOLD = 10000
 TOP_ARTISTS_BASE_URL = "http://ws.audioscrobbler.com/2.0/?method=user.gettopartists&user={lastfm_username}&api_key={api_key}&format=json&limit={artists_limit}"
@@ -24,7 +25,9 @@ def compare_taste(toptags1, toptags2):
         numerator += toptags1.get(tag, 0) * toptags2.get(tag, 0)
     denominator = sum((toptags1.get(tag, 0) ** 2 for tag in tags)) + \
         sum((toptags2.get(tag, 0) ** 2 for tag in tags))
-    return math.degrees(math.acos(numerator / denominator))
+    angle = math.degrees(math.acos(numerator / denominator))
+    print("angle is {angle:.2f}°.".format(angle=angle))
+    return angle
 
 
 def encodeURIComponent(input_str, quotate=urllib.parse.quote):
@@ -59,6 +62,19 @@ def get_tag_name(artist_tag_payload):
     return artist_tag_payload["name"]
 
 
+def get_user_friends_usernames(lastfm_username):
+    page = 0
+    while True:
+        page += 1
+        response = requests.get(FRIENDS_BASE_URL.format(
+            lastfm_username=lastfm_username, api_key=API_KEY, page=page))
+        data = json.loads(response.text)
+        if not len(data["friends"]["user"]):
+            break
+        for friend in data["friends"]["user"]:
+            yield friend["name"]
+
+
 def get_user_toptags(lastfm_username):
     print("Acquiring {lastfm_username}'s top tags...".format(
         lastfm_username=lastfm_username))
@@ -81,7 +97,7 @@ def get_user_toptags(lastfm_username):
                         tag_name, 0) + get_tag_count(tag) * topartists[artist]
             except:
                 print("Artist {artist} make us sick.".format(artist=artist))
-
+        # data = toptags
         data = {key: toptags[key]
                 for key in toptags if toptags[key] > TAG_THRESHOLD}
         with open(cache_filename, 'w') as cache_file:
@@ -89,7 +105,20 @@ def get_user_toptags(lastfm_username):
         return data
 
 
-toptags1 = get_user_toptags(sys.argv[1])
-toptags2 = get_user_toptags(sys.argv[2])
-print("comparing...")
-print(compare_taste(toptags1, toptags2))
+# toptags1 = get_user_toptags(sys.argv[1])
+# toptags2 = get_user_toptags(sys.argv[2])
+# print("comparing...")
+# print(compare_taste(toptags1, toptags2))
+
+toptags = get_user_toptags(LASTFM_USERNAME)
+comparations = []
+print("Fetching {lastfm_username}'s friends...".format(
+    lastfm_username=LASTFM_USERNAME))
+for friend_username in get_user_friends_usernames(LASTFM_USERNAME):
+    friend_toptags = get_user_toptags(friend_username)
+    print("Comparing {user1} and {user2}...".format(
+        user1=LASTFM_USERNAME, user2=friend_username))
+    comparations.append(
+        (friend_username, compare_taste(toptags, friend_toptags)))
+comparations.sort(key=lambda comparation: comparation[1])
+pprint(comparations)
